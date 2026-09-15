@@ -46,6 +46,7 @@ from pyflink.table.expressions import (
     lit as table_lit,
 )
 from pyflink.table.table import Table
+from pyflink.table.table_descriptor import TableDescriptor
 from pyflink.util.api_stability_decorators import PublicEvolving
 
 __all__ = ["DataFrame", "GroupedDataFrame", "col", "lit"]
@@ -1401,7 +1402,46 @@ class DataFrame:
         from pyflink.dataframe.io import _build_generic_descriptor
 
         descriptor = _build_generic_descriptor(connector, options)
-        result = self._table.execute_insert(descriptor)
+        self._execute_insert(descriptor)
+
+    @PublicEvolving()
+    def write_catalog_table(self, path: str, *, overwrite: bool = False) -> None:
+        """
+        Write this DataFrame to a table registered in a catalog.
+
+        ``path`` is ``table_name``, ``db_name.table_name``, or ``catalog_name.db_name.table_name``.
+        Missing parts are resolved against the current catalog and database, see
+        :func:`~pyflink.dataframe.use_catalog` and :func:`~pyflink.dataframe.use_database`. The
+        write is submitted immediately and waits for completion when using local or MiniCluster
+        execution.
+
+        :param path: Path of the catalog table.
+        :param overwrite: Whether existing data should be replaced, like ``INSERT OVERWRITE``.
+            Not every connector supports overwriting.
+        :raises TypeError: If ``path`` is not a string or ``overwrite`` is not a bool.
+        :raises ValueError: If ``path`` is empty.
+
+        Example::
+
+            >>> import pyflink.dataframe as pf
+            >>> events = pf.from_records([(1, "login")], schema=["id", "event"])
+            >>> events.write_catalog_table("my_catalog.my_database.events")
+            >>> pf.use_catalog("my_catalog")
+            >>> events.write_catalog_table("my_database.events", overwrite=True)
+
+        .. versionadded:: 2.4.0
+        """
+        from pyflink.dataframe.io import _validate_table_path
+
+        _validate_table_path(path)
+        if not isinstance(overwrite, bool):
+            raise TypeError("overwrite must be a bool")
+        self._execute_insert(path, overwrite)
+
+    def _execute_insert(
+        self, target: Union[str, TableDescriptor], overwrite: bool = False
+    ) -> None:
+        result = self._table.execute_insert(target, overwrite)
         execution_target = self._table._t_env.get_config().get(
             "execution.target", None
         )

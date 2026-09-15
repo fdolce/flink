@@ -16,32 +16,37 @@
     limitations under the License.
    ################################################################################
 
-==============
-Input / Output
-==============
+========
+Catalogs
+========
 
-DataFrame I/O functions read from and write to external systems through Flink connectors.
-Connector-specific methods provide convenient interfaces for common systems, while generic
-methods expose the raw connector identifiers and string options used by Table connector factories.
+Functions for creating catalogs and navigating catalogs and databases. Setting the current
+catalog and database lets :func:`~pyflink.dataframe.read_catalog_table` and
+:meth:`~pyflink.dataframe.DataFrame.write_catalog_table` reference tables by short paths instead
+of the full ``catalog_name.db_name.table_name``.
 
-Readers
--------
-
-.. currentmodule:: pyflink.dataframe
-
-.. autosummary::
-    :toctree: api/
-
-    read_catalog_table
-    read_generic
-
-Writers
--------
+Catalog Management
+------------------
 
 .. currentmodule:: pyflink.dataframe
 
 .. autosummary::
     :toctree: api/
 
-    DataFrame.write_catalog_table
-    DataFrame.write_generic
+    create_catalog
+    get_catalog
+    use_catalog
+    get_current_catalog
+    list_catalogs
+
+Database Navigation
+-------------------
+
+.. currentmodule:: pyflink.dataframe
+
+.. autosummary::
+    :toctree: api/
+
+    use_database
+    get_current_database
+    list_databases

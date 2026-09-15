@@ -24,7 +24,14 @@ from pyflink.dataframe.datatype import DataType
 from pyflink.table import Schema, TableDescriptor
 from pyflink.util.api_stability_decorators import PublicEvolving
 
-__all__ = ["read_generic"]
+__all__ = ["read_catalog_table", "read_generic"]
+
+
+def _validate_table_path(path: str) -> None:
+    if not isinstance(path, str):
+        raise TypeError("path must be a string")
+    if not path:
+        raise ValueError("path must not be empty")
 
 
 def _validate_connector(connector: str) -> None:
@@ -190,3 +197,35 @@ def read_generic(
     descriptor = _build_generic_descriptor(connector, options, source_schema)
     table_environment = get_or_create_table_environment()
     return DataFrame(table_environment.from_descriptor(descriptor))
+
+
+@PublicEvolving()
+def read_catalog_table(path: str) -> DataFrame:
+    """
+    Read a table registered in a catalog.
+
+    ``path`` is ``table_name``, ``db_name.table_name``, or ``catalog_name.db_name.table_name``.
+    Missing parts are resolved against the current catalog and database, see
+    :func:`~pyflink.dataframe.use_catalog` and :func:`~pyflink.dataframe.use_database`. Names that
+    are reserved keywords or contain dots must be escaped with backticks.
+
+    :param path: Path of the catalog table.
+    :return: A DataFrame backed by the catalog table.
+    :raises TypeError: If ``path`` is not a string.
+    :raises ValueError: If ``path`` is empty.
+
+    Example::
+
+        >>> import pyflink.dataframe as pf
+        >>> pf.create_catalog("my_catalog", {"type": "generic_in_memory"})
+        >>> orders = pf.read_catalog_table("my_catalog.default.orders")
+        >>> pf.use_catalog("my_catalog")
+        >>> orders = pf.read_catalog_table("default.orders")
+        >>> pf.use_database("default")
+        >>> orders = pf.read_catalog_table("orders")
+
+    .. versionadded:: 2.4.0
+    """
+    _validate_table_path(path)
+    table_environment = get_or_create_table_environment()
+    return DataFrame(table_environment.from_path(path))

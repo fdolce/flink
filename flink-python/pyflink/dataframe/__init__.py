@@ -38,6 +38,16 @@ Example::
     <Row(1, 'Alice', 31)>
 """
 
+from pyflink.dataframe.catalog import (
+    create_catalog,
+    get_catalog,
+    get_current_catalog,
+    get_current_database,
+    list_catalogs,
+    list_databases,
+    use_catalog,
+    use_database,
+)
 from pyflink.dataframe.convert import (
     from_arrow,
     from_dict,
@@ -54,7 +64,7 @@ from pyflink.dataframe.context import (
 from pyflink.dataframe.dataframe import DataFrame, GroupedDataFrame, col, lit
 from pyflink.dataframe.dataframe_config import config
 from pyflink.dataframe.datatype import DataType
-from pyflink.dataframe.io import read_generic
+from pyflink.dataframe.io import read_catalog_table, read_generic
 from pyflink.dataframe.sql import sql
 from pyflink.dataframe.udf import udf
 
@@ -71,8 +81,17 @@ __all__ = [
     "from_records",
     "from_table",
     "range",
+    "read_catalog_table",
     "read_generic",
     "sql",
+    "create_catalog",
+    "get_catalog",
+    "use_catalog",
+    "get_current_catalog",
+    "list_catalogs",
+    "use_database",
+    "get_current_database",
+    "list_databases",
     "config",
     "set_table_environment",
     "get_table_environment",
