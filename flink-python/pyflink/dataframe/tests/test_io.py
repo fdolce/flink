@@ -319,9 +319,33 @@ class CatalogTableIOTests(PyFlinkDataFrameUTTestCase):
         with self.assertRaisesRegex(ValueError, "path must not be empty"):
             pf.read_catalog_table("")
 
-    def test_read_catalog_table_propagates_flink_errors(self):
-        with self.assertRaisesRegex(Py4JJavaError, "`missing` was not found"):
+    def test_read_catalog_table_translates_flink_errors(self):
+        with self.assertRaises(ValueError) as context:
             pf.read_catalog_table("my_catalog.my_database.missing")
+        self.assertEqual(
+            str(context.exception),
+            "Table `my_catalog`.`my_database`.`missing` was not found.",
+        )
+        self.assertIsInstance(context.exception.__cause__, Py4JJavaError)
+
+    def test_write_catalog_table_translates_flink_errors(self):
+        dataframe = pf.from_records([(1, "a")], schema=["id", "name"])
+
+        with self.assertRaises(ValueError) as context:
+            dataframe.write_catalog_table("my_catalog.my_database.missing")
+        self.assertIn(
+            "Cannot find table '`my_catalog`.`my_database`.`missing`'",
+            str(context.exception),
+        )
+
+        self.t_env.execute_sql(
+            "CREATE TABLE my_catalog.my_database.sink (id BIGINT) "
+            "WITH ('connector' = 'blackhole')"
+        )
+        with self.assertRaises(ValueError) as context:
+            dataframe.write_catalog_table("my_catalog.my_database.sink")
+        self.assertIn("Column types of query result and sink", str(context.exception))
+        self.assertIsInstance(context.exception.__cause__, Py4JJavaError)
 
     def test_write_catalog_table_passes_path_and_overwrite(self):
         dataframe = pf.from_records([(1, "a")], schema=["id", "name"])

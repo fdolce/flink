@@ -1419,7 +1419,8 @@ class DataFrame:
         :param overwrite: Whether existing data should be replaced, like ``INSERT OVERWRITE``.
             Not every connector supports overwriting.
         :raises TypeError: If ``path`` is not a string or ``overwrite`` is not a bool.
-        :raises ValueError: If ``path`` is empty.
+        :raises ValueError: If ``path`` is empty or does not resolve to a table, or if this
+            DataFrame's schema is not compatible with the table.
 
         Example::
 
@@ -1431,12 +1432,16 @@ class DataFrame:
 
         .. versionadded:: 2.4.0
         """
+        from pyflink.dataframe.catalog import _raise_catalog_error
         from pyflink.dataframe.io import _validate_table_path
 
         _validate_table_path(path)
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be a bool")
-        self._execute_insert(path, overwrite)
+        try:
+            self._execute_insert(path, overwrite)
+        except Exception as error:
+            _raise_catalog_error(error)
 
     def _execute_insert(
         self, target: Union[str, TableDescriptor], overwrite: bool = False

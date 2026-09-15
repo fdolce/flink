@@ -16,12 +16,16 @@
 # limitations under the License.
 ################################################################################
 
-from typing import Dict, List, Optional
+from typing import Dict, List, NoReturn, Optional
+
+from py4j.protocol import Py4JJavaError
 
 from pyflink.common import Configuration
 from pyflink.dataframe.context import get_or_create_table_environment
 from pyflink.table.catalog import Catalog, CatalogDescriptor
 from pyflink.util.api_stability_decorators import PublicEvolving
+from pyflink.util.exceptions import CatalogException
+from pyflink.util.java_utils import is_instance_of
 
 __all__ = [
     "create_catalog",
@@ -40,6 +44,27 @@ def _validate_name(name: str, what: str) -> None:
         raise TypeError(f"{what} must be a string")
     if not name:
         raise ValueError(f"{what} must not be empty")
+
+
+def _raise_catalog_error(error: Exception) -> NoReturn:
+    """
+    Re-raise ``error`` from a catalog operation.
+
+    Flink reports user mistakes such as an unknown catalog, database, or table, or invalid
+    catalog options, as ``CatalogException`` or ``ValidationException``. PyFlink surfaces the
+    former as :class:`~pyflink.util.exceptions.CatalogException` and the latter as a raw
+    ``Py4JJavaError``. Both become a :class:`ValueError` carrying Flink's message, chained to the
+    original. Anything else is re-raised unchanged.
+    """
+    if isinstance(error, CatalogException):
+        first_line = str(error).splitlines()[0]
+        message = first_line.split(": ", 1)[-1]
+        raise ValueError(message) from error
+    if isinstance(error, Py4JJavaError) and is_instance_of(
+        error.java_exception, "org.apache.flink.table.api.ValidationException"
+    ):
+        raise ValueError(error.java_exception.getMessage()) from error
+    raise error
 
 
 def _validate_catalog_options(options: Dict[str, str]) -> None:
@@ -66,7 +91,8 @@ def create_catalog(name: str, options: Dict[str, str]) -> None:
     :param name: Name under which the catalog is created.
     :param options: Catalog options, including the ``type`` option.
     :raises TypeError: If ``name`` is not a string or ``options`` is not a dict of strings.
-    :raises ValueError: If ``name`` or an option key is empty.
+    :raises ValueError: If ``name`` or an option key is empty, if a catalog named ``name`` already
+        exists, or if Flink cannot create a catalog from ``options``.
 
     Example::
 
@@ -84,7 +110,10 @@ def create_catalog(name: str, options: Dict[str, str]) -> None:
     for key, value in options.items():
         configuration.set_string(key, value)
     descriptor = CatalogDescriptor.of(name, configuration)
-    get_or_create_table_environment().create_catalog(name, descriptor)
+    try:
+        get_or_create_table_environment().create_catalog(name, descriptor)
+    except Exception as error:
+        _raise_catalog_error(error)
 
 
 @PublicEvolving()
@@ -124,7 +153,7 @@ def use_catalog(name: str) -> None:
 
     :param name: Name of a registered catalog.
     :raises TypeError: If ``name`` is not a string.
-    :raises ValueError: If ``name`` is empty.
+    :raises ValueError: If ``name`` is empty or no catalog named ``name`` exists.
 
     Example::
 
@@ -137,7 +166,10 @@ def use_catalog(name: str) -> None:
     .. versionadded:: 2.4.0
     """
     _validate_name(name, "name")
-    get_or_create_table_environment().use_catalog(name)
+    try:
+        get_or_create_table_environment().use_catalog(name)
+    except Exception as error:
+        _raise_catalog_error(error)
 
 
 @PublicEvolving()
@@ -186,7 +218,8 @@ def use_database(name: str) -> None:
 
     :param name: Name of a database in the current catalog.
     :raises TypeError: If ``name`` is not a string.
-    :raises ValueError: If ``name`` is empty.
+    :raises ValueError: If ``name`` is empty or the current catalog has no database named
+        ``name``.
 
     Example::
 
@@ -198,7 +231,10 @@ def use_database(name: str) -> None:
     .. versionadded:: 2.4.0
     """
     _validate_name(name, "name")
-    get_or_create_table_environment().use_database(name)
+    try:
+        get_or_create_table_environment().use_database(name)
+    except Exception as error:
+        _raise_catalog_error(error)
 
 
 @PublicEvolving()

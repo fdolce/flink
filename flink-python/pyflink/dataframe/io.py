@@ -18,6 +18,7 @@
 
 from typing import Dict, Optional, Tuple
 
+from pyflink.dataframe.catalog import _raise_catalog_error
 from pyflink.dataframe.context import get_or_create_table_environment
 from pyflink.dataframe.dataframe import DataFrame
 from pyflink.dataframe.datatype import DataType
@@ -212,7 +213,7 @@ def read_catalog_table(path: str) -> DataFrame:
     :param path: Path of the catalog table.
     :return: A DataFrame backed by the catalog table.
     :raises TypeError: If ``path`` is not a string.
-    :raises ValueError: If ``path`` is empty.
+    :raises ValueError: If ``path`` is empty or does not resolve to a table.
 
     Example::
 
@@ -228,4 +229,8 @@ def read_catalog_table(path: str) -> DataFrame:
     """
     _validate_table_path(path)
     table_environment = get_or_create_table_environment()
-    return DataFrame(table_environment.from_path(path))
+    try:
+        table = table_environment.from_path(path)
+    except Exception as error:
+        _raise_catalog_error(error)
+    return DataFrame(table)
