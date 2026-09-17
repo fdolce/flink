@@ -277,6 +277,27 @@ class GenericIOTests(PyFlinkDataFrameUTTestCase):
                 with self.assertRaisesRegex(error_type, message):
                     dataframe.write_generic(connector, options=options)
 
+    def test_read_generic_translates_flink_errors(self):
+        with self.assertRaises(ValueError) as context:
+            pf.read_generic(
+                "datagen",
+                schema=self._SCHEMA,
+                options={},
+                computed_columns={"bad": "NO_SUCH_FUNCTION(id)"},
+            )
+        self.assertEqual(
+            str(context.exception), "Invalid expression for computed column 'bad'."
+        )
+        self.assertIsInstance(context.exception.__cause__, Py4JJavaError)
+
+    def test_write_generic_translates_flink_errors(self):
+        dataframe = pf.from_records([(1,)], schema=["id"])
+
+        with self.assertRaises(ValueError) as context:
+            dataframe.write_generic("no_such_connector", options={})
+        self.assertIn("no_such_connector", str(context.exception))
+        self.assertIsInstance(context.exception.__cause__, Py4JJavaError)
+
 
 class CatalogTableIOTests(PyFlinkDataFrameUTTestCase):
     def setUp(self):
@@ -325,6 +346,13 @@ class CatalogTableIOTests(PyFlinkDataFrameUTTestCase):
         self.assertEqual(
             str(context.exception),
             "Table `my_catalog`.`my_database`.`missing` was not found.",
+        )
+        self.assertIsInstance(context.exception.__cause__, Py4JJavaError)
+
+        with self.assertRaises(ValueError) as context:
+            pf.read_catalog_table("too.many.path.parts")
+        self.assertEqual(
+            str(context.exception), "Invalid SQL identifier too.many.path.parts."
         )
         self.assertIsInstance(context.exception.__cause__, Py4JJavaError)
 

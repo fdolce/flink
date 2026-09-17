@@ -1382,8 +1382,8 @@ class DataFrame:
         :param connector: Factory identifier used as the ``connector`` Table option.
         :param options: Connector options, excluding the reserved ``connector`` option.
         :raises TypeError: If an argument has an invalid type.
-        :raises ValueError: If the connector or an option key is empty, or if ``options`` contains
-            the reserved ``connector`` key.
+        :raises ValueError: If the connector or an option key is empty, if ``options`` contains
+            the reserved ``connector`` key, or if Flink rejects the connector or its options.
 
         Example::
 
@@ -1399,10 +1399,14 @@ class DataFrame:
 
         .. versionadded:: 2.4.0
         """
+        from pyflink.dataframe.errors import _raise_as_value_error
         from pyflink.dataframe.io import _build_generic_descriptor
 
         descriptor = _build_generic_descriptor(connector, options)
-        self._execute_insert(descriptor)
+        try:
+            self._execute_insert(descriptor)
+        except Exception as error:
+            _raise_as_value_error(error)
 
     @PublicEvolving()
     def write_catalog_table(self, path: str, *, overwrite: bool = False) -> None:
@@ -1419,8 +1423,8 @@ class DataFrame:
         :param overwrite: Whether existing data should be replaced, like ``INSERT OVERWRITE``.
             Not every connector supports overwriting.
         :raises TypeError: If ``path`` is not a string or ``overwrite`` is not a bool.
-        :raises ValueError: If ``path`` is empty or does not resolve to a table, or if this
-            DataFrame's schema is not compatible with the table.
+        :raises ValueError: If ``path`` is empty, is not a valid table path, or does not resolve
+            to a table, or if this DataFrame's schema is not compatible with the table.
 
         Example::
 
@@ -1432,16 +1436,16 @@ class DataFrame:
 
         .. versionadded:: 2.4.0
         """
-        from pyflink.dataframe.catalog import _raise_catalog_error
-        from pyflink.dataframe.io import _validate_table_path
+        from pyflink.dataframe.catalog import _validate_name
+        from pyflink.dataframe.errors import _raise_as_value_error
 
-        _validate_table_path(path)
+        _validate_name(path, "path")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be a bool")
         try:
             self._execute_insert(path, overwrite)
         except Exception as error:
-            _raise_catalog_error(error)
+            _raise_as_value_error(error)
 
     def _execute_insert(
         self, target: Union[str, TableDescriptor], overwrite: bool = False

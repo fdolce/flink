@@ -16,16 +16,13 @@
 # limitations under the License.
 ################################################################################
 
-from typing import Dict, List, NoReturn, Optional
-
-from py4j.protocol import Py4JJavaError
+from typing import Dict, List, Optional
 
 from pyflink.common import Configuration
 from pyflink.dataframe.context import get_or_create_table_environment
+from pyflink.dataframe.errors import _raise_as_value_error
 from pyflink.table.catalog import Catalog, CatalogDescriptor
 from pyflink.util.api_stability_decorators import PublicEvolving
-from pyflink.util.exceptions import CatalogException
-from pyflink.util.java_utils import is_instance_of
 
 __all__ = [
     "create_catalog",
@@ -44,27 +41,6 @@ def _validate_name(name: str, what: str) -> None:
         raise TypeError(f"{what} must be a string")
     if not name:
         raise ValueError(f"{what} must not be empty")
-
-
-def _raise_catalog_error(error: Exception) -> NoReturn:
-    """
-    Re-raise ``error`` from a catalog operation.
-
-    Flink reports user mistakes such as an unknown catalog, database, or table, or invalid
-    catalog options, as ``CatalogException`` or ``ValidationException``. PyFlink surfaces the
-    former as :class:`~pyflink.util.exceptions.CatalogException` and the latter as a raw
-    ``Py4JJavaError``. Both become a :class:`ValueError` carrying Flink's message, chained to the
-    original. Anything else is re-raised unchanged.
-    """
-    if isinstance(error, CatalogException):
-        first_line = str(error).splitlines()[0]
-        message = first_line.split(": ", 1)[-1]
-        raise ValueError(message) from error
-    if isinstance(error, Py4JJavaError) and is_instance_of(
-        error.java_exception, "org.apache.flink.table.api.ValidationException"
-    ):
-        raise ValueError(error.java_exception.getMessage()) from error
-    raise error
 
 
 def _validate_catalog_options(options: Dict[str, str]) -> None:
@@ -93,6 +69,8 @@ def create_catalog(name: str, options: Dict[str, str]) -> None:
     :raises TypeError: If ``name`` is not a string or ``options`` is not a dict of strings.
     :raises ValueError: If ``name`` or an option key is empty, if a catalog named ``name`` already
         exists, or if Flink cannot create a catalog from ``options``.
+    :raises ~pyflink.util.exceptions.CatalogException: If the catalog reports an error while
+        being created.
 
     Example::
 
@@ -105,15 +83,18 @@ def create_catalog(name: str, options: Dict[str, str]) -> None:
     """
     _validate_name(name, "name")
     _validate_catalog_options(options)
+    table_environment = get_or_create_table_environment()
+    if name in table_environment.list_catalogs():
+        raise ValueError(f"a catalog named {name!r} already exists")
 
     configuration = Configuration()
     for key, value in options.items():
         configuration.set_string(key, value)
     descriptor = CatalogDescriptor.of(name, configuration)
     try:
-        get_or_create_table_environment().create_catalog(name, descriptor)
+        table_environment.create_catalog(name, descriptor)
     except Exception as error:
-        _raise_catalog_error(error)
+        _raise_as_value_error(error)
 
 
 @PublicEvolving()
@@ -166,10 +147,10 @@ def use_catalog(name: str) -> None:
     .. versionadded:: 2.4.0
     """
     _validate_name(name, "name")
-    try:
-        get_or_create_table_environment().use_catalog(name)
-    except Exception as error:
-        _raise_catalog_error(error)
+    table_environment = get_or_create_table_environment()
+    if name not in table_environment.list_catalogs():
+        raise ValueError(f"no catalog named {name!r} exists")
+    table_environment.use_catalog(name)
 
 
 @PublicEvolving()
@@ -231,10 +212,13 @@ def use_database(name: str) -> None:
     .. versionadded:: 2.4.0
     """
     _validate_name(name, "name")
-    try:
-        get_or_create_table_environment().use_database(name)
-    except Exception as error:
-        _raise_catalog_error(error)
+    table_environment = get_or_create_table_environment()
+    if name not in table_environment.list_databases():
+        raise ValueError(
+            f"no database named {name!r} exists in catalog "
+            f"{table_environment.get_current_catalog()!r}"
+        )
+    table_environment.use_database(name)
 
 
 @PublicEvolving()

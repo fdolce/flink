@@ -18,21 +18,15 @@
 
 from typing import Dict, Optional, Tuple
 
-from pyflink.dataframe.catalog import _raise_catalog_error
+from pyflink.dataframe.catalog import _validate_name
 from pyflink.dataframe.context import get_or_create_table_environment
 from pyflink.dataframe.dataframe import DataFrame
 from pyflink.dataframe.datatype import DataType
+from pyflink.dataframe.errors import _raise_as_value_error
 from pyflink.table import Schema, TableDescriptor
 from pyflink.util.api_stability_decorators import PublicEvolving
 
 __all__ = ["read_catalog_table", "read_generic"]
-
-
-def _validate_table_path(path: str) -> None:
-    if not isinstance(path, str):
-        raise TypeError("path must be a string")
-    if not path:
-        raise ValueError("path must not be empty")
 
 
 def _validate_connector(connector: str) -> None:
@@ -172,7 +166,8 @@ def read_generic(
     :return: A DataFrame backed by the configured source.
     :raises TypeError: If an argument has an invalid type.
     :raises ValueError: If a connector, schema, option key, computed column, or watermark value is
-        empty, or if a computed column conflicts with a physical column.
+        empty, if a computed column conflicts with a physical column, or if Flink rejects a
+        computed column or watermark expression.
 
     Example::
 
@@ -197,7 +192,11 @@ def read_generic(
     source_schema = _build_source_schema(schema, computed_columns, watermark)
     descriptor = _build_generic_descriptor(connector, options, source_schema)
     table_environment = get_or_create_table_environment()
-    return DataFrame(table_environment.from_descriptor(descriptor))
+    try:
+        table = table_environment.from_descriptor(descriptor)
+    except Exception as error:
+        _raise_as_value_error(error)
+    return DataFrame(table)
 
 
 @PublicEvolving()
@@ -213,7 +212,8 @@ def read_catalog_table(path: str) -> DataFrame:
     :param path: Path of the catalog table.
     :return: A DataFrame backed by the catalog table.
     :raises TypeError: If ``path`` is not a string.
-    :raises ValueError: If ``path`` is empty or does not resolve to a table.
+    :raises ValueError: If ``path`` is empty, is not a valid table path, or does not resolve to a
+        table.
 
     Example::
 
@@ -227,10 +227,10 @@ def read_catalog_table(path: str) -> DataFrame:
 
     .. versionadded:: 2.4.0
     """
-    _validate_table_path(path)
+    _validate_name(path, "path")
     table_environment = get_or_create_table_environment()
     try:
         table = table_environment.from_path(path)
     except Exception as error:
-        _raise_catalog_error(error)
+        _raise_as_value_error(error)
     return DataFrame(table)

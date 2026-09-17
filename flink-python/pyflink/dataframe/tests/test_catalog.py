@@ -72,14 +72,15 @@ class CatalogTests(PyFlinkDataFrameUTTestCase):
 
         self.assertNotIn("my_catalog", pf.list_catalogs())
 
-    def test_create_catalog_translates_flink_errors(self):
-        with self.assertRaises(ValueError) as context:
-            pf.create_catalog("default_catalog", {"type": "generic_in_memory"})
-        self.assertEqual(
-            str(context.exception), "Catalog default_catalog already exists."
-        )
-        self.assertIsInstance(context.exception.__cause__, CatalogException)
+    def test_create_catalog_rejects_existing_catalog(self):
+        with patch.object(self.t_env, "create_catalog") as create_catalog:
+            with self.assertRaisesRegex(
+                ValueError, "a catalog named 'default_catalog' already exists"
+            ):
+                pf.create_catalog("default_catalog", {"type": "generic_in_memory"})
+        create_catalog.assert_not_called()
 
+    def test_create_catalog_translates_flink_errors(self):
         with self.assertRaises(ValueError) as context:
             pf.create_catalog("my_catalog", {"type": "no_such_catalog_type"})
         self.assertIn("Unable to create catalog 'my_catalog'", str(context.exception))
@@ -119,20 +120,18 @@ class CatalogTests(PyFlinkDataFrameUTTestCase):
         self.assertEqual(pf.get_current_catalog(), "default_catalog")
         self.assertEqual(pf.get_current_database(), "default_database")
 
-    def test_navigation_translates_flink_errors(self):
-        with self.assertRaises(ValueError) as context:
-            pf.use_catalog("missing")
-        self.assertEqual(
-            str(context.exception), "A catalog with name [missing] does not exist."
-        )
+    def test_navigation_rejects_unknown_names(self):
+        with patch.object(self.t_env, "use_catalog") as use_catalog:
+            with self.assertRaisesRegex(ValueError, "no catalog named 'missing' exists"):
+                pf.use_catalog("missing")
+        use_catalog.assert_not_called()
 
-        with self.assertRaises(ValueError) as context:
-            pf.use_database("missing")
-        self.assertEqual(
-            str(context.exception),
-            "A database with name [missing] does not exist in the catalog: "
-            "[default_catalog].",
-        )
+        with patch.object(self.t_env, "use_database") as use_database:
+            with self.assertRaisesRegex(
+                ValueError, "no database named 'missing' exists in catalog 'default_catalog'"
+            ):
+                pf.use_database("missing")
+        use_database.assert_not_called()
 
         self.assertEqual(pf.get_current_catalog(), "default_catalog")
         self.assertEqual(pf.get_current_database(), "default_database")
@@ -140,14 +139,15 @@ class CatalogTests(PyFlinkDataFrameUTTestCase):
     def test_unexpected_errors_are_not_translated(self):
         gateway = get_gateway()
         j_error = gateway.jvm.org.apache.flink.table.api.TableException("boom")
-        java_error = Py4JJavaError("An error occurred while calling useCatalog.", j_error)
+        java_error = Py4JJavaError("An error occurred while calling createCatalog.", j_error)
+        catalog_error = CatalogException("boom")
         python_error = RuntimeError("boom")
 
-        for error in [java_error, python_error]:
+        for error in [java_error, catalog_error, python_error]:
             with self.subTest(error=type(error).__name__):
-                with patch.object(self.t_env, "use_catalog", side_effect=error):
+                with patch.object(self.t_env, "create_catalog", side_effect=error):
                     with self.assertRaises(type(error)) as context:
-                        pf.use_catalog("my_catalog")
+                        pf.create_catalog("my_catalog", {"type": "generic_in_memory"})
                 self.assertIs(context.exception, error)
 
     def test_name_validation(self):
